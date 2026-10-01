@@ -55,6 +55,7 @@ SUITES = (
     "test_stock_settings_diff.py",
     "test_shell_table.py",
     "test_stock_caplog.py",
+    "test_bench_source.py",
     "test_firmware_build.py",
     "test_remote_proto.py",
     "test_openscope_host.py",
