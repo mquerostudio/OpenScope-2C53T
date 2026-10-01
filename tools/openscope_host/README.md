@@ -46,4 +46,14 @@ claude mcp add openscope -- uv run --no-project --python 3.12 --with mcp --with 
     --directory "$PWD" python -m openscope.mcp_server
 ```
 
-It is safe by default: the debug shell can erase flash (`fwapply`, `flash wtest`) or desynchronise the FPGA, so only read-only commands are reachable, and POWER is refused. `--allow-raw-shell` lifts both for supervised bench work.
+The debug shell can erase flash (`fwapply`, `flash wtest`) or desynchronise the FPGA, so whoever starts the server picks how much of it `scope_shell` may reach with `--level` (append it to the command above). The lists live in `openscope/device.py`:
+
+| `--level` | `scope_shell` accepts | use |
+|---|---|---|
+| `readonly` (default) | `READ_ONLY_SHELL`, exact: `version` `status` `uptime` `usbstat` `fwstat` `fwcrumb` `help` | any agent session |
+| `bench` | readonly + `BENCH_SHELL`: scope/acquisition setters and reads the experiment scripts use (`fpga scope timebase\|range\|center\|vdiv\|trigmode\|level\|…`, `trig`, `trig2`, `mode`, the EXP acquisition knobs, `fpga scope measure\|freq`, `spi3 read\|frame`, `gpio read\|scan`, meter/cal/flash reads; `spi3 opread` only with the channel-read opcodes `04`/`05`, since others write FPGA registers or hit the config port) | experiments, someone nearby |
+| `unsafe` | every shell command except the deny-list | bench work with a human watching |
+
+`scope_shell` never sends these at any level (`NEVER_SHELL`; the rule is flash writes, boot changes, resets, writes to caller-chosen addresses or pins, FPGA run-pin pulses and SPI3 pin takeover, while fixed frontend pin patterns such as `meter mux-arms` stay at unsafe): `fwload` `fwapply` `fwswap` `fwcrumb clear` `cal backup` `cal restore` `flash wtest` `mem write` `mode startup` `reboot` `gpio set` `gpio mode` `bench restore` `spi3 armtest` `fpga dbgclk` `fpga dbgarm` `fpga reinit` (its `<a-e><pin>` option pulses any pin LOW, `c9` = PC9 power hold) `fpga busrelease` `fpga busreacquire` `fpga configbb` `spi3 edgecap`, plus the reserved names `flash erase` `flash write` `iap` `dfu` `reset`; lines with control or non-ASCII characters (the firmware's line editor would rewrite them after the check) or over 127 characters. `scope_press` refuses the POWER button at every level. Run those yourself with `python3 -m openscope shell …` / `press`. Every refusal reaches the agent as a tool error that says why and which level, if any, would allow it. `--allow-raw-shell` still works as a deprecated alias for `--level unsafe` (it warns on stderr and no longer lifts POWER).
+
+The levels gate the shell, not the front panel. `scope_press` is available at every level, readonly included, and its other buttons are not filtered: they can navigate to **Settings > Startup on Boot**, where OK/LEFT/RIGHT erase and rewrite an MCU flash sector (the effect `mode startup` is denied for), **Settings > Firmware Update**, where OK reboots into the DFU bootloader (the effect `reboot`/`dfu` are denied for), and **Settings > FPGA SPI Scanner**, where OK starts a sweep of over an hour that sends FPGA config opcodes and only the physical POWER button stops. The tool description tells the agent so.
